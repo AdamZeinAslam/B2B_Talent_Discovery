@@ -1,7 +1,7 @@
 """Mesin Weighted KNN untuk B2B Talent Discovery.
 
 Implementasi ini mengikuti transformasi dan formula pada notebook final:
-- Hard filter Program Studi dan kategori IPK
+- Hard filter Program Studi, Perguruan Tinggi, dan kategori IPK
 - Profile Distance dari fitur multi-hot, one-hot, TF-IDF, numerik, exact match
 - Competency Distance dari kompetensi M1-M9 yang dipilih perusahaan
 - Final Distance = sqrt(0.70 * profile_norm^2 + 0.30 * competency_norm^2)
@@ -185,6 +185,12 @@ class TalentMatcher:
         if is_active(program):
             eligible &= self.profile["Program Studi"].map(norm_key).eq(norm_key(program))
 
+        # Optional hard filter: exact university match. A selected campus narrows
+        # the candidate pool before KNN/WSM ranking; it is not a soft distance feature.
+        campus = requirement.get("Perguruan Tinggi")
+        if is_active(campus):
+            eligible &= self.profile["Perguruan Tinggi"].map(norm_key).eq(norm_key(campus))
+
         minimum_ipk = requirement.get("IPK Minimum")
         if minimum_ipk is not None:
             ipk_code = pd.to_numeric(self.profile["IPK"], errors="coerce")
@@ -287,8 +293,12 @@ class TalentMatcher:
             ))
             active_groups.append("Numerik")
 
-        # E. Exact Match: Perguruan Tinggi dan Tempat Magang.
-        active_exact = [field for field in self.exact_match_fields if is_active(requirement.get(field))]
+        # E. Exact Match: remaining soft exact-match fields (e.g. internship).
+        # Perguruan Tinggi is handled exclusively as a hard filter in _hard_filter.
+        active_exact = [
+            field for field in self.exact_match_fields
+            if field != "Perguruan Tinggi" and is_active(requirement.get(field))
+        ]
         if active_exact:
             candidate_block = np.column_stack([
                 self.model_features[field].map(norm_key).eq(norm_key(requirement[field])).astype(int).to_numpy()
@@ -340,11 +350,20 @@ class TalentMatcher:
                 raise ValueError(f"Target {code} harus berada pada rentang 0 sampai {max_score}.")
 
         eligible_positions = self._hard_filter(requirement)
-        if len(eligible_positions) < self.top_k:
+        if len(eligible_positions) == 0:
+            applied_filters = [
+                f"Perguruan Tinggi: {requirement.get('Perguruan Tinggi')}"
+                if is_active(requirement.get("Perguruan Tinggi")) else None,
+                f"Program Studi: {requirement.get('Program Studi')}"
+                if is_active(requirement.get("Program Studi")) else None,
+                f"IPK minimum: {requirement.get('IPK Minimum')}"
+                if requirement.get("IPK Minimum") is not None else None,
+            ]
+            filter_text = "; ".join(item for item in applied_filters if item)
+            detail = f" Filter aktif: {filter_text}." if filter_text else ""
             raise ValueError(
-                f"Kandidat yang lolos hard filter hanya {len(eligible_positions)}. "
-                f"Perlu minimal {self.top_k} kandidat untuk membuat Top 10. "
-                "Coba longgarkan Program Studi atau minimum IPK."
+                "Tidak ada kandidat yang memenuhi hard filter yang dipilih."
+                f"{detail} Coba pilih perguruan tinggi lain atau longgarkan persyaratan."
             )
 
         profile_candidates, profile_company, active_groups, normalized_group_weights = (
@@ -407,11 +426,14 @@ class TalentMatcher:
         base["WSM Rank"] = wsm_ranks
 
         comparison = base.sort_values("KNN Rank", kind="stable").reset_index(drop=True)
-        recommendations = comparison.head(self.top_k).copy()
+        # Display at most top_k recommendations, but allow fewer than 10 when
+        # only a small number of candidates pass the hard filters.
+        display_count = min(self.top_k, len(comparison))
+        recommendations = comparison.head(display_count).copy()
         recommendations.insert(0, "Ranking", np.arange(1, len(recommendations) + 1))
 
         wsm_recommendations = (
-            base.sort_values("WSM Rank", kind="stable").head(self.top_k).copy().reset_index(drop=True)
+            base.sort_values("WSM Rank", kind="stable").head(display_count).copy().reset_index(drop=True)
         )
         wsm_recommendations.insert(0, "Ranking", np.arange(1, len(wsm_recommendations) + 1))
 
