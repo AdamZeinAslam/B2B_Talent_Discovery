@@ -28,8 +28,8 @@ def render(matcher) -> None:
     section_heading("Alur penggunaan aplikasi", "Ikuti tahapan ini untuk mendapatkan rekomendasi kandidat yang dapat ditinjau.")
     steps = [
         ("01", "Tentukan posisi", "Masukkan nama perusahaan dan posisi yang sedang dibutuhkan."),
-        ("02", "Tetapkan filter", "Gunakan Program Studi atau kategori IPK hanya jika benar-benar wajib."),
-        ("03", "Pilih kriteria profil", "Masukkan bidang minat, Work Values, pengalaman VINIX7, dan preferensi yang relevan."),
+        ("02", "Tetapkan hard filter", "Pilih Perguruan Tinggi, Program Studi, atau IPK minimum jika memang menjadi syarat wajib. Jika kampus dipilih, hanya kandidat dari kampus tersebut yang diproses."),
+        ("03", "Pilih kriteria profil", "Masukkan bidang minat, Work Values, pengalaman VINIX7, dan preferensi lain untuk membantu mengurutkan kandidat."),
         ("04", "Pilih kompetensi", "Pilih 2–9 dimensi M1–M9 dan tetapkan target skornya."),
         ("05", "Evaluasi hasil", "Bandingkan ranking dan jalankan evaluasi kandidat berbasis rubrik internal."),
         ("06", "Buat shortlist", "Simpan kandidat untuk ditinjau lebih lanjut oleh tim HR/perusahaan."),
