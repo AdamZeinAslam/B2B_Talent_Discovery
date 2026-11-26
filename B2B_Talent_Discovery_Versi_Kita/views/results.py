@@ -131,7 +131,11 @@ def _show_candidate_details(recommendations: pd.DataFrame, context: dict, namesp
 
 def _render_knn(result, context: dict) -> None:
     st.markdown("#### Weighted KNN — metode utama")
-    st.caption("Model mengurutkan kandidat menggunakan weighted Euclidean distance. Jarak lebih kecil berarti lebih dekat dengan kriteria yang dimasukkan.")
+    st.caption(
+        f"Menampilkan {len(result.recommendations)} kandidat dari {result.eligible_candidates:,} "
+        "kandidat yang lolos filter (maksimal 10). Model mengurutkan kandidat menggunakan "
+        "weighted Euclidean distance. Jarak lebih kecil berarti lebih dekat dengan kriteria yang dimasukkan."
+    )
     st.dataframe(
         _candidate_table(result.recommendations, "knn"),
         hide_index=True,
@@ -148,6 +152,11 @@ def _render_knn(result, context: dict) -> None:
 
 def _render_wsm(result) -> None:
     st.markdown("#### Weighted Scoring Model — metode pembanding")
+    st.caption(
+        f"Menampilkan {len(result.wsm_recommendations)} kandidat dari {result.eligible_candidates:,} "
+        "kandidat yang lolos filter (maksimal 10). Jika kandidat yang lolos kurang dari 10, "
+        "semuanya tetap ditampilkan."
+    )
     st.write(
         "WSM mengubah jarak profil dan jarak kompetensi yang sudah dinormalisasi menjadi skor kesesuaian relatif, "
         "kemudian menggabungkannya secara linear menggunakan bobot 70:30. Berbeda dari KNN yang menggabungkan "
@@ -183,7 +192,8 @@ def _render_comparison(result) -> None:
     corr = comparison[["KNN Rank", "WSM Rank"]].corr(method="spearman").iloc[0, 1]
 
     a, b, c = st.columns(3)
-    a.metric("Kandidat sama di Top 10", f"{overlap}/10")
+    denominator = min(len(knn_top), len(wsm_top))
+    a.metric("Kandidat sama di daftar rekomendasi", f"{overlap}/{denominator}")
     b.metric("Kandidat lolos filter", f"{result.eligible_candidates:,}")
     c.metric("Korelasi ranking", f"{corr:.3f}" if pd.notna(corr) else "Tidak tersedia")
 
@@ -219,17 +229,6 @@ def _get_secret(name: str, default: str = "") -> str:
     except Exception:
         value = default
     return str(value or os.getenv(name, default) or "")
-
-
-def _save_candidate_to_shortlist(
-    candidate_id: str, comparison: pd.DataFrame, shortlist: dict
-) -> bool:
-    """Save the complete matched candidate row to the shared session shortlist."""
-    matches = comparison[comparison["Candidate_ID"].astype(str) == str(candidate_id)]
-    if matches.empty:
-        return False
-    shortlist[str(candidate_id)] = matches.iloc[0].to_dict()
-    return True
 
 
 def _render_ai_hr(result, context: dict, matcher) -> None:
@@ -268,8 +267,8 @@ def _render_ai_hr(result, context: dict, matcher) -> None:
     ].copy()
     candidates_frame = candidates_frame.set_index("Candidate_ID").loc[selected_ids].reset_index()
     st.caption(
-        f"Sampel evaluasi: {len(candidates_frame)} kandidat unik dari gabungan "
-        "Top 10 Weighted KNN dan Top 10 Weighted Scoring."
+        f"Sampel evaluasi: {len(candidates_frame)} kandidat unik dari daftar rekomendasi "
+        "Weighted KNN dan Weighted Scoring (maksimal 10 kandidat per metode)."
     )
 
     selected_competencies = context.get("selected_competencies", {})
@@ -411,27 +410,6 @@ def _render_ai_hr(result, context: dict, matcher) -> None:
                 st.markdown("**Hal yang perlu diperiksa HR**")
                 gaps = str(row.get("Gaps / Missing Information", "")).strip()
                 st.write(gaps if gaps and gaps.lower() != "nan" else "Tidak ada informasi tambahan yang disebutkan AI.")
-
-                # Shortlist dari evaluasi AI menggunakan data kandidat lengkap dari
-                # tabel perbandingan, bukan hanya baris ringkasan hasil AI.
-                candidate_id = str(row["Candidate_ID"])
-                shortlist = st.session_state.setdefault("shortlist", {})
-                is_shortlisted = candidate_id in shortlist
-                if st.button(
-                    "Hapus dari shortlist" if is_shortlisted else "Tambahkan ke shortlist",
-                    key=f"ai_eval_shortlist_btn_{candidate_id}",
-                    type="secondary" if is_shortlisted else "primary",
-                    use_container_width=True,
-                ):
-                    if is_shortlisted:
-                        shortlist.pop(candidate_id, None)
-                    else:
-                        saved = _save_candidate_to_shortlist(
-                            candidate_id, result.comparison, shortlist
-                        )
-                        if not saved:
-                            st.error("Data lengkap kandidat tidak ditemukan. Kandidat belum ditambahkan.")
-                    st.rerun()
         st.download_button(
             "Unduh hasil evaluasi (CSV)",
             data=ai_results.to_csv(index=False).encode("utf-8-sig"),
@@ -468,7 +446,20 @@ def render(matcher) -> None:
     a, b, c = st.columns(3)
     a.metric("Profil dalam model", f"{result.total_candidates:,}")
     b.metric("Lolos hard filter", f"{result.eligible_candidates:,}")
-    c.metric("Kandidat pada Top 10", f"{len(result.recommendations):,}")
+    c.metric("Rekomendasi ditampilkan", f"{len(result.recommendations):,}")
+
+    if result.eligible_candidates == 1:
+        st.info(
+            "Hanya satu kandidat yang memenuhi seluruh hard filter. Kandidat tersebut tetap ditampilkan. "
+            "Karena nilai jarak dan skor kesesuaian dinormalisasi relatif terhadap kelompok hasil pencarian, "
+            "skor WSM 100 pada kelompok yang hanya berisi satu kandidat bukan berarti kecocokan absolut "
+            "atau peluang diterima 100%."
+        )
+    elif result.eligible_candidates < 10:
+        st.info(
+            f"{result.eligible_candidates} kandidat memenuhi seluruh hard filter. "
+            "Sistem menampilkan semua kandidat yang lolos; jumlah hasil tidak harus 10."
+        )
 
     requirement = context.get("requirement", {})
     targets = context.get("selected_competencies", {})
