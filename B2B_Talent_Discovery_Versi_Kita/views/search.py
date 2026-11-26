@@ -42,7 +42,7 @@ def render(matcher) -> None:
 
     with st.container(border=True):
         section_heading("B. Filter awal kandidat", "Hard filter diterapkan sebelum penghitungan jarak. Gunakan hanya jika menjadi persyaratan wajib.")
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
             program_choice = st.selectbox(
                 "Program Studi",
@@ -55,18 +55,24 @@ def render(matcher) -> None:
                 list(IPK_FILTERS.keys()),
                 help="Data IPK tersimpan sebagai kategori 1–4, bukan IPK desimal individual.", key="ipk_choice",
             )
+        with c3:
+            campus = st.selectbox(
+                "Perguruan Tinggi",
+                ["Semua Perguruan Tinggi"] + options["Perguruan Tinggi"],
+                help="Jika dipilih, hanya kandidat dari perguruan tinggi tersebut yang akan ditampilkan. Ini merupakan hard filter, bukan penambah skor.",
+                key="campus_hard_filter",
+            )
+        st.caption("Perguruan Tinggi dan Program Studi menjadi hard filter jika dipilih. Kandidat yang tidak memenuhi syarat ini tidak akan masuk ke proses pemeringkatan.")
         st.caption("Catatan: IPK tersimpan sebagai kode kategori 1–4. Pemetaan kategori pada bundle harus diverifikasi terhadap kuesioner resmi VINIX7 sebelum filter ini digunakan untuk keputusan operasional.")
-        st.warning("Perguruan Tinggi dan Tempat Magang tidak perlu dipilih sebagai syarat umum. Keduanya memengaruhi jarak profil bila dipilih, sehingga sebaiknya dibiarkan kosong kecuali ada alasan rekrutmen yang jelas.")
 
     with st.container(border=True):
-        section_heading("C. Profil kandidat yang dicari", "Pilih kriteria tambahan yang relevan. Perguruan Tinggi bersifat opsional, sedangkan pengalaman magang VINIX7 dapat digunakan sebagai filter tersendiri.")
+        section_heading("C. Profil kandidat yang dicari", "Pilih kriteria tambahan yang relevan untuk membantu mengurutkan kandidat yang sudah lolos hard filter.")
         st.markdown("**Jabatan / Dream Job**")
         st.caption("Nama posisi menjadi teks pencarian utama pada fitur Dream Job. Contoh: Data Analyst, Frontend Developer, atau Business Analyst.")
         c1, c2 = st.columns(2)
         with c1:
             interests = st.multiselect("Bidang Minat", options["Bidang Minat"], help="Boleh memilih lebih dari satu bidang.", key="interests")
             values = st.multiselect("Work Values", options["Work Values"], help="Pilih nilai kerja yang penting bagi perusahaan atau tim.", key="work_values")
-            campus = st.selectbox("Perguruan Tinggi (opsional)", _none_option(options["Perguruan Tinggi"]), help="Pilihan ini hanya preferensi tambahan. Hindari menjadikan nama kampus sebagai syarat umum rekrutmen.", key="campus")
             vinix_experience = st.radio(
                 "Pengalaman magang di VINIX7",
                 ["Tidak dijadikan kriteria", "Pernah magang di VINIX7", "Tidak pernah magang di VINIX7"],
@@ -122,8 +128,8 @@ def render(matcher) -> None:
             st.info("Pilih paling sedikit dua kompetensi untuk menampilkan pengaturan target skor.")
 
     st.write("")
-    submitted = st.button("Cari 10 kandidat", type="primary", use_container_width=True, key="run_matching")
-    st.caption("KNN dan WSM menggunakan bobot 70% profil dan 30% kompetensi. Perbedaannya terletak pada cara menggabungkan kedua komponen tersebut.")
+    submitted = st.button("Cari kandidat", type="primary", use_container_width=True, key="run_matching")
+    st.caption("Hasil menampilkan maksimal 10 kandidat teratas. Jika yang lolos filter hanya 1–9 kandidat, seluruh kandidat tersebut tetap ditampilkan. KNN dan WSM menggunakan bobot 70% profil dan 30% kompetensi.")
 
     if submitted:
         errors = []
@@ -139,7 +145,7 @@ def render(matcher) -> None:
         requirement: dict[str, Any] = {
             "Program Studi": None if program_choice == "Semua Program Studi" else program_choice,
             "IPK Minimum": IPK_FILTERS[ipk_choice],
-            "Perguruan Tinggi": None if campus == "Tidak ditentukan" else campus,
+            "Perguruan Tinggi": None if campus == "Semua Perguruan Tinggi" else campus,
             "Tempat Magang": None,
             "Pengalaman VINIX7": None if vinix_experience == "Tidak dijadikan kriteria" else vinix_experience,
             "Dream Job": position_title.strip(),
